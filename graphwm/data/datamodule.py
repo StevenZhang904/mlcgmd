@@ -84,7 +84,7 @@ class PLDataModule(pl.LightningDataModule):
         return [
             DataLoader(
                 dataset,
-                shuffle=True,
+                shuffle=False,
                 batch_size=self.batch_size.val,
                 num_workers=self.num_workers.val,
                 worker_init_fn=worker_init_fn,
