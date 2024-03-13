@@ -7,3 +7,7 @@ ignored/
 .env
 .editorconfig
 .DS_Store
+water_data_tip3p/*
+polymer_train/*
+wandb/*
+mlcgmd_models/*
