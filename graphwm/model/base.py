@@ -71,7 +71,7 @@ class GraphSim(pl.LightningModule):
     return NotImplementedError
   
   def coarse_graining(self, pos_seq, next_pos, ptype_embeddings, weights, 
-                      cluster=None, keypoint=None):
+                      cluster=None, keypoint=None, force=None, next_force=None):
     """
     coarse grain <pos_seq>, <next_pos>, <ptype_embeddings>, and <weights> using the 
     fine -> coarse mapping given by <cluster>.
@@ -86,6 +86,16 @@ class GraphSim(pl.LightningModule):
       cg_pos_seq, cg_weights = utils.compute_com(pos_seq, weights, cluster)
     cg_pos_seq, cg_next_pos = cg_pos_seq[:, :-1], cg_pos_seq[:, -1]
     cg_ptype_embeddings = scatter(ptype_embeddings, cluster, dim=0, reduce='mean')
+    if force:
+      force_seq = torch.cat([force, next_force[:, None, :]], dim=1)  # process next_pos at the same time.
+      if 'use_keypoint_for_cg' in self.hparams and self.hparams.use_keypoint_for_cg:
+        cg_force_seq = force_seq[keypoint]
+        weights = weights.view(-1, 1, 1)  
+      else:
+        cg_force_seq, cg_weights = utils.compute_com(force_seq, weights, cluster)
+      cg_force_seq, cg_next_force = cg_force_seq[:, :-1], cg_force_seq[:, -1]
+      return cg_pos_seq, cg_next_pos, cg_ptype_embeddings, cg_weights, cg_force_seq, cg_next_force
+    
     return cg_pos_seq, cg_next_pos, cg_ptype_embeddings, cg_weights
   
   def noise_augment(self, pos_seq, next_pos, n_node):
@@ -125,13 +135,14 @@ class GraphSim(pl.LightningModule):
     lattices = lattices.repeat_interleave(n_node, dim=0)
     return utils.wrap_positions(pos_seq, lattices)
   
-  def _embedding_preprocessor(self, ptypes, n_node, bonds=None, btypes=None, weights=None, force=None, energy=None):
+  def _embedding_preprocessor(self, ptypes, n_node, bonds=None, btypes=None, weights=None, energy=None):
     """
     compute node embedding at the fine graph level. excute before coarse-graining.
     only applicable when the ground truth graph has bond information.
     set <btype> when bond type is available. 
     if <embedding_gn_hparams> is <None>, use <ptype_embedding> as node embeddings.
     """
+    ### TODO: fit energy into it
     ptype_embeddings = self.type_embedding(ptypes)
     if not self.hparams.embedding_gn_hparams:
       return ptype_embeddings
@@ -158,7 +169,7 @@ class GraphSim(pl.LightningModule):
       return self.embedding_gn(graph_tuple)
   
   def _dynamics_preprocessor(self, pos_seq, ptype_embeddings, n_node,
-                             bonds=None, lattices=None, globals=None, weights=None):
+                             bonds=None, lattices=None, globals=None, weights=None, force=None):
     """
     Construct input graph for the dynamics modules.
     Compute connectivities, displacements and distances with periodic boundary conditions 
@@ -167,11 +178,13 @@ class GraphSim(pl.LightningModule):
     # node features.
     vel_seq = self._time_diff(pos_seq)  # Finite-difference.
     flat_vel_seq = torch.reshape(vel_seq, [vel_seq.shape[0], math.prod(vel_seq.shape[1:])])
+    force_dif_seq = self._time_diff(force)
+    flat_force_diff_seq = torch.reshape(force_dif_seq, [force_dif_seq.shape[0], math.prod(force_dif_seq.shape[1:])])
     
     if self.hparams.use_weights and weights is not None:
-      node_features = torch.cat([flat_vel_seq, ptype_embeddings, weights], dim=-1)
+      node_features = torch.cat([flat_vel_seq, flat_force_diff_seq, ptype_embeddings, weights], dim=-1)
     else:
-      node_features = torch.cat([flat_vel_seq, ptype_embeddings], dim=-1)
+      node_features = torch.cat([flat_vel_seq, flat_force_diff_seq, ptype_embeddings], dim=-1)
     
     # wrap positions under periodic boundary condition into lattices.
     if lattices is not None:

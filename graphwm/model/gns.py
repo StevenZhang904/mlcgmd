@@ -55,23 +55,33 @@ class GNS(GraphSim):
     # print("bonds", bonds, bonds.shape)  ### shape = (num_atoms*batch_size*2, 2)
     # # print("bond_types", bond_types, bond_types.shape)
     # print("weights", weights, weights.shape) ### shape = (num_atoms*batch_size)
-    ptype_embeddings = self._embedding_preprocessor(ptypes, n_node, bonds, bond_types, weights=weights, force=force, energy=energy)
+    ptype_embeddings = self._embedding_preprocessor(ptypes, n_node, bonds, bond_types, weights=weights, energy=energy)
     
     # coarse graining.
     if self.use_coarse_graining:
-      (pos_seq, next_pos, ptype_embeddings, weights) = self.coarse_graining(
+      if force:
+        (pos_seq, next_pos, ptype_embeddings, weights, force, next_force) = self.coarse_graining(
+          pos_seq, next_pos, ptype_embeddings, weights, cluster, keypoint, force, next_force)
+      else:        
+        (pos_seq, next_pos, ptype_embeddings, weights) = self.coarse_graining(
           pos_seq, next_pos, ptype_embeddings, weights, cluster, keypoint)
       n_node = n_cg_node
       bonds = cg_bonds  # only operate at coarse-level after this point.
-    
+
     pos_seq, next_pos = self.noise_augment(pos_seq, next_pos, n_node)
-    input_graph = self._dynamics_preprocessor(pos_seq, ptype_embeddings, n_node, bonds, lattices, weights=weights)
+    if force:
+      force_seq, next_force = self.noise_augment(force_seq, next_force, n_node)
+      input_graph = self._dynamics_preprocessor(pos_seq, ptype_embeddings, n_node, bonds, lattices, weights=weights, force=force, next_force=next_force)    
+    else:
+      input_graph = self._dynamics_preprocessor(pos_seq, ptype_embeddings, n_node, bonds, lattices, weights=weights)
     
     # compute acceleration loss.
     acc_stats, latent_graph = self.dynamics_gn(input_graph, return_latent=True)
     acc_mean, acc_std = torch.split(acc_stats, self.hparams.dimension, dim=-1)
     acc_std = self.hparams.min_std + self.soft_plus(acc_std)
     
+
+    ### TODO: fix loss for force
     acc_dist = Normal(acc_mean, acc_std)
     acc_target = self._inverse_decoder_postprocessor(next_pos, pos_seq)
     acc_loss = -acc_dist.log_prob(acc_target).mean()
