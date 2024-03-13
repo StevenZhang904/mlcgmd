@@ -44,13 +44,18 @@ class GNS(GraphSim):
  
   def forward(self, pos_seq, next_pos, ptypes, n_node, 
               bonds=None, bond_types=None, labels=None,
-              lattices=None, cg_bonds=None, n_cg_node=None, cluster=None, keypoint=None):
+              lattices=None, cg_bonds=None, n_cg_node=None, cluster=None, keypoint=None, force=None, energy=None):
     if self.particle_masses.device != pos_seq.device:
       self.particle_masses = self.particle_masses.to(pos_seq.device)
       self.noise_sigmas = self.noise_sigmas.to(pos_seq.device)
     
     weights = self.particle_masses[ptypes]
-    ptype_embeddings = self._embedding_preprocessor(ptypes, n_node, bonds, bond_types, weights=weights)
+    # print("ptypes", ptypes, ptypes.shape)  ### shape = (num_atoms*batch_size)
+    # print("n_node", n_node, n_node.shape)  ### shape = (batch_size)
+    # print("bonds", bonds, bonds.shape)  ### shape = (num_atoms*batch_size*2, 2)
+    # # print("bond_types", bond_types, bond_types.shape)
+    # print("weights", weights, weights.shape) ### shape = (num_atoms*batch_size)
+    ptype_embeddings = self._embedding_preprocessor(ptypes, n_node, bonds, bond_types, weights=weights, force=force, energy=energy)
     
     # coarse graining.
     if self.use_coarse_graining:
@@ -72,16 +77,16 @@ class GNS(GraphSim):
     acc_loss = -acc_dist.log_prob(acc_target).mean()
     
     # fit rgs residual and compute loss.
-    if self.hparams.property_net_hparams:
-      prop_pred = self.predict_prop(latent_graph, pos_seq[:, -1], weights, n_cg_node)
-      property_loss = (prop_pred - labels[:, -1][:, None]).pow(2).mean()
-    else:
-      property_loss = 0
-    loss = acc_loss + property_loss
-    
+    ### Removed since there is no rgs for us.
+    # if self.hparams.property_net_hparams:
+    #   prop_pred = self.predict_prop(latent_graph, pos_seq[:, -1], weights, n_cg_node)
+    #   property_loss = (prop_pred - labels[:, -1][:, None]).pow(2).mean()
+    # else:
+    #   property_loss = 0
+    loss = acc_loss 
     return {'loss': loss, 
             'acc_loss': acc_loss,
-            'property_loss': property_loss,
+            # 'property_loss': property_loss,
             'mean_std_ratio': (acc_mean.norm(dim=-1) / acc_std.norm(dim=-1)).mean(),
             'entropy': acc_dist.entropy().mean()}
       
