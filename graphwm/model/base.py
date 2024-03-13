@@ -49,10 +49,10 @@ class GraphSim(pl.LightningModule):
     nn.init.xavier_uniform_(self.edge_type_embedding.weight)
     
     # property head if applicable.
-    if self.hparams.property_net_hparams:
-      self.graph_pool = nets.GraphPooling(reducers=['mean'])
-      self.property_head = nets.build_mlp(in_dim=self.latent_dim, 
-                                          **self.hparams.property_net_hparams)
+    # if self.hparams.property_net_hparams:
+    #   self.graph_pool = nets.GraphPooling(reducers=['mean'])
+    #   self.property_head = nets.build_mlp(in_dim=self.latent_dim, 
+    #                                       **self.hparams.property_net_hparams)
     
     # noise scales.
     self.noise_sigmas = torch.linspace(math.log(self.hparams.noise_begin), 
@@ -125,7 +125,7 @@ class GraphSim(pl.LightningModule):
     lattices = lattices.repeat_interleave(n_node, dim=0)
     return utils.wrap_positions(pos_seq, lattices)
   
-  def _embedding_preprocessor(self, ptypes, n_node, bonds=None, btypes=None, weights=None):
+  def _embedding_preprocessor(self, ptypes, n_node, bonds=None, btypes=None, weights=None, force=None, energy=None):
     """
     compute node embedding at the fine graph level. excute before coarse-graining.
     only applicable when the ground truth graph has bond information.
@@ -140,7 +140,6 @@ class GraphSim(pl.LightningModule):
                                  ground truth graph contains bonds.'                        
       senders, receivers = bonds[:, 0], bonds[:, 1]
       edge_embeddings = ptype_embeddings[senders] + ptype_embeddings[receivers]
-      
       if btypes is not None and self.hparams.num_btypes > 0:
         edge_embeddings += self.bond_type_embedding(btypes)
       
