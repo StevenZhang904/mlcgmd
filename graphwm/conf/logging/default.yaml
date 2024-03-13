@@ -1,5 +1,6 @@
 # log frequency
-val_check_interval: 20000.0
+# val_check_interval: 5000
+check_val_every_n_epoch: 1
 progress_bar_refresh_rate: 10
 
 wandb:
